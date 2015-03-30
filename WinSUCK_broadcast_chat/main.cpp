@@ -8,13 +8,22 @@
 using namespace std;
 #pragma comment(lib,"ws2_32.lib")
 
+struct Message
+{
+	char hostName[64];
+	char text[128];
+};
+
 
 void __cdecl recvdProc(void * Args);
 void sendProc(sockaddr_in);
 
 SOCKET mainSocket;
 bool programExit = true;
-bool enableSocketBrodcast = true;
+
+Message message;
+sockaddr_in Recv_addr;
+
 
 int main(int argc, char *argv[])
 {
@@ -25,6 +34,7 @@ int main(int argc, char *argv[])
 		if ((mainSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET) cout << "#2 Creating socket error: " << WSAGetLastError() << endl;
 		else
 		{		
+			bool enableSocketBrodcast = true;
 			setsockopt(mainSocket, SOL_SOCKET, SO_BROADCAST, (char*)&enableSocketBrodcast, sizeof(bool));
 
 			sockaddr_in Sender_addr;
@@ -37,6 +47,7 @@ int main(int argc, char *argv[])
 			Recv_addr.sin_port = htons(12345);
 			Recv_addr.sin_addr.s_addr = INADDR_ANY;
 
+			gethostname(message.hostName, sizeof(message.hostName));
 
 			if (bind(mainSocket, reinterpret_cast<sockaddr*>(&Recv_addr), sizeof(Recv_addr))==0)
 			{
@@ -59,45 +70,53 @@ int main(int argc, char *argv[])
 }
 
 void __cdecl recvdProc(void * Args)
-{
-	
-	int rozm = 0;
+{	
+	int rozmiar = sizeof(Recv_addr);
+	int rozm = -1;
+	Message _message;	
+
 	do
-	{	
-		char buff[64];
-		rozm = recv(mainSocket, reinterpret_cast<char*>(&buff), sizeof(buff), 0);
+	{			
+		rozm = recvfrom(mainSocket, reinterpret_cast<char*>(&_message), sizeof(Message), 0, reinterpret_cast<sockaddr*>(&Recv_addr), &rozmiar);
 		if (rozm < 0)
 			printf("4 Error: %d\n", WSAGetLastError());
 		else
-		{
-			buff[rozm] = 0;
-			printf("%s\n", buff);
+		{		
+			if (strcmp(_message.hostName, message.hostName) != 0)
+				printf("%s: %s\n", _message.hostName, _message.text);
 		}		
 	} while (programExit);
+
 	_endthread();
 }
 
+
 void sendProc(sockaddr_in Sender_addr)
 {
-	char  wiadomosc[64];
-	gethostname(wiadomosc, 64);
-	strcat_s(wiadomosc, " connect");
-	if (sendto(mainSocket, wiadomosc, strlen(wiadomosc), 0, reinterpret_cast<sockaddr*>(&Sender_addr), sizeof(Sender_addr)) < 0)
+	strcpy_s(message.text, "");
+	strcat_s(message.text, message.hostName);
+	strcat_s(message.text, " connected");
+
+	if (sendto(mainSocket, reinterpret_cast<char*>(&message), sizeof(Message), 0, reinterpret_cast<sockaddr*>(&Sender_addr), sizeof(Sender_addr)) < 0)
 		printf("send error: %d", WSAGetLastError());
 
 	do
 	{
-		std::cin >> wiadomosc;
-		if (strcmp(wiadomosc, "exit") ==0)break;
+		char wiadomosc[192] = "";
+		std::cin >> message.text;
 
-		if (sendto(mainSocket, wiadomosc, strlen(wiadomosc), 0, reinterpret_cast<sockaddr*>(&Sender_addr), sizeof(Sender_addr)) < 0)
+		if (strcmp(message.text, "exit") ==0)break;		
+
+		if (sendto(mainSocket, reinterpret_cast<char*>(&message), sizeof(Message), 0, reinterpret_cast<sockaddr*>(&Sender_addr), sizeof(Sender_addr)) < 0)
 			printf("send error: %d", WSAGetLastError());
 
 	} while (true);
 
-	gethostname(wiadomosc, 64);
-	strcat_s(wiadomosc, " disconnect");
-	if (sendto(mainSocket, wiadomosc, strlen(wiadomosc), 0, reinterpret_cast<sockaddr*>(&Sender_addr), sizeof(Sender_addr)) < 0)
+	strcpy_s(message.text, "");
+	strcat_s(message.text, message.hostName);
+	strcat_s(message.text, " disconnected");
+
+	if (sendto(mainSocket, reinterpret_cast<char*>(&message), sizeof(Message), 0, reinterpret_cast<sockaddr*>(&Sender_addr), sizeof(Sender_addr)) < 0)
 		printf("send error: %d", WSAGetLastError());
 
 	programExit = false;
